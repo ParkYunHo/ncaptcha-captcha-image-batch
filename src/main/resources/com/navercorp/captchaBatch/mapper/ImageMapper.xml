@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.navercorp.captchaBatch.mapper.ImageMapper">
+	<select id="selectImageTypeList" resultType="com.navercorp.captchaBatch.domain.ImageTypeVO">
+		select imageType_pk as typeKey, typeName from image_type; 
+	</select>
+	
+	<select id="selectImageInfoList" parameterType="java.util.List" resultType="com.navercorp.captchaBatch.domain.ImageInfoVO">
+		select image_pk as imageKey, typeName, usageName, b64
+		from (
+			select image_pk, IMGTYPE.typeName, USAGETYPE.typeName usageName, b64, row_number() over (partition by USAGETYPE.imageUsageType_pk, IMGTYPE.imageType_pk) rowNo 
+			from image_info INFO
+			join image_type IMGTYPE on INFO.imageType_fk = IMGTYPE.imageType_pk
+			join image_usage_type USAGETYPE on INFO.imageUsageType_fk = USAGETYPE.imageUsageType_pk and USAGETYPE.typeName = #{usageName}
+			where INFO.isUsed=0
+		) D
+		where 1 != 1
+		<foreach collection="paramList" item="item" separator=" ">
+			<![CDATA[or (typeName = #{item.typeName} and rowNo <= #{item.emptyCnt})]]>
+		</foreach>
+		order by typeName
+	</select>
+	
+	<update id="updateImageInfoList" parameterType="java.util.List">
+		update image_info set isUsed=1 where image_pk in (
+			select image_pk
+			from (
+				select image_pk, IMGTYPE.typeName, USAGETYPE.typeName usageName, INFO.b64, row_number() over (partition by USAGETYPE.imageUsageType_pk, IMGTYPE.imageType_pk) rowNo 
+				from image_info INFO
+				join image_type IMGTYPE on INFO.imageType_fk = IMGTYPE.imageType_pk
+				join image_usage_type USAGETYPE on INFO.imageUsageType_fk = USAGETYPE.imageUsageType_pk and USAGETYPE.typeName = #{usageName}
+				where INFO.isUsed=0
+			) D
+			where 1 != 1
+			<foreach collection="paramList" item="item" separator=" ">
+				<![CDATA[or (typeName = #{item.typeName} and rowNo <= #{item.emptyCnt})]]>
+			</foreach>
+			order by typeName
+		)
+	</update>
+	
+	<select id="selectCheckUnusedImage" parameterType="String" resultType="int">
+		select count(*) from unused_info where concat(bzstNo, '_', panoTypeCd) = #{imageKey}
+	</select>
+</mapper>
